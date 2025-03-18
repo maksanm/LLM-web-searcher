@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "web-searcher"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+beautifulsoup4 = "^4.13.3"
+google = "^3.0.0"
+requests = "^2.32.3"
+markdownify = "^0.14.1"
+fastapi = "^0.115.8"
+python-dotenv = "^1.0.1"
+langchain-openai = "^0.3.3"
+langchain = "^0.3.17"
+langgraph = "^0.2.69"
+scikit-learn = "^1.6.1"
+uvicorn = "^0.34.0"
+seleniumbase = "^4.34.7"
+sentence-transformers = "^3.4.1"
+undetected-chromedriver = "^3.5.5"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
