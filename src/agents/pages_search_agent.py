@@ -1,11 +1,10 @@
 import re
 from bs4 import BeautifulSoup
-from langchain_openai import OpenAIEmbeddings
 from selenium import webdriver
 from seleniumbase import Driver
 from selenium.common.exceptions import TimeoutException
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sentence_transformers import SentenceTransformer, util
+from sentence_transformers import SentenceTransformer
 from nltk.tokenize import sent_tokenize
 import nltk
 import threading
@@ -18,7 +17,6 @@ from chains.extraction_chain import ExtractionChain
 
 
 class PagesSearchAgent:
-    html_convertable_tags = [ 'abbr', 'b', 'blockquote', 'cite', 'code', 'dd', 'del', 'div', 'dl', 'dt', 'em', 'figcaption', 'figure', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'i', 'ins', 'label', 'li', 'main', 'mark', 'nav', 'ol', 'p', 'pre', 'q', 's', 'small', 'span', 'strong', 'sub', 'summary', 'sup', 'table', 'td', 'th', 'time', 'title', 'u', 'ul']
 
     def __init__(self):
         #self.extraction_chain = ExtractionChain().create()
@@ -174,7 +172,7 @@ class PagesSearchAgent:
         Returns text of relevant chunks plus 1 chunk before and after each relevant one.
         Results were weak, so they have been replaced by sentence-transformers.
         """
-        chunks = self._split_text(text, 500)
+        chunks = self._split_into_paragraphs(text)
 
         # Vectorize chunks and transform query
         vectorizer = TfidfVectorizer()
@@ -205,7 +203,3 @@ class PagesSearchAgent:
         related_text = " ".join(related_chunks)
 
         return related_text
-
-
-    def _split_text(self, text, chunk_size):
-        return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
