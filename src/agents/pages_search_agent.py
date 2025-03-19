@@ -1,9 +1,13 @@
+import re
 from bs4 import BeautifulSoup
+from langchain_openai import OpenAIEmbeddings
 from selenium import webdriver
 from seleniumbase import Driver
 from selenium.common.exceptions import TimeoutException
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sentence_transformers import SentenceTransformer, util
+from nltk.tokenize import sent_tokenize
+import nltk
 import threading
 import undetected_chromedriver as uc
 import os
@@ -19,6 +23,7 @@ class PagesSearchAgent:
         #self.extraction_chain = ExtractionChain().create()
         self.transformer = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
         self.min_retrieved_text_length = 50
+        nltk.download('punkt_tab')
 
 
     def invoke(self, state):
@@ -74,7 +79,7 @@ class PagesSearchAgent:
         # Retrieve page source or other needed data
         t = time.time()
         driver = uc.Chrome(options=options, user_multi_procs=True)
-        #driver = Driver(headless=True, multi_proxy=True)
+        #driver = Driver(uc=True, headless=True, multi_proxy=True)
         #driver = webdriver.Chrome(options=options)
         driver.set_page_load_timeout(5)
         try:
@@ -84,6 +89,8 @@ class PagesSearchAgent:
         finally:
             content_html = driver.page_source
             soup = BeautifulSoup(content_html, 'html.parser')
+            for tag in soup(["nav", "header", "footer", "script", "style", "aside"]):
+                tag.decompose()
             text = soup.get_text(separator=' ', strip=True)
 
         driver.quit()
@@ -109,15 +116,12 @@ class PagesSearchAgent:
 
 
     def _extract_related_text(self, text, query, similarity_threshold=0.1):
-        # Split the text into paragraphs (by blank lines) with keyword filtering
-        #keywords = [word for word in query.lower().split() if len(word) > 2]
         page_size_limit = int(os.getenv("RETRIEVED_PAGE_CHARACTER_LIMIT"))
-        paragraphs = self._split_text(text, 250)#page_size_limit // 4)
-        #paragraphs = re.split(r"\n\s*\n", text.strip())
-        paragraphs = [p.strip() for p in paragraphs if p.strip()]
+        paragraphs = self._split_into_paragraphs(text)
 
         if not paragraphs:
             return ""
+
         # Compute embeddings for the query and for each paragraph
         t = time.time()
         print("---Transformer start---")
@@ -129,19 +133,49 @@ class PagesSearchAgent:
         similarities = util.cos_sim(query_emb, paragraph_embs)[0]
         print("PROCESSING PARAGRAPHS: ", (max(similarities)))
 
-        # Filter, sort, and concatenate paragraphs within character limit
-        sorted_paragraphs = sorted(
-            ((p, sim) for p, sim in zip(paragraphs, similarities) if sim >= similarity_threshold),
-            key=lambda x: x[1], reverse=True
-        )
+        filtered_paragraphs = [
+            p for p, sim in zip(paragraphs, similarities)
+            if sim >= similarity_threshold
+        ]
 
         related_text = ""
-        for p, _ in sorted_paragraphs:
+        for p in filtered_paragraphs:
+            # Check if adding the next paragraph would exceed the limit
             if len(related_text) + len(p) > page_size_limit:
                 break
             related_text += p + "\n\n"
-
         return related_text.strip()
+
+
+    def _split_into_paragraphs(self, text, length_threshold=100):
+        """
+        Uses NLTK to split 'text' into sentences, then groups sentences
+        into paragraphs whose length does not exceed 'length_threshold'.
+        """
+        # 1. Use nltk's sent_tokenize for reliable sentence splitting.
+        sentences = sent_tokenize(text)
+
+        paragraphs = []
+        current_paragraph = []
+        current_length = 0
+
+        # 2. Accumulate sentences into paragraphs
+        for sentence in sentences:
+            sentence_length = len(sentence)
+            if current_length + sentence_length <= length_threshold:
+                current_paragraph.append(sentence)
+                current_length += sentence_length
+            else:
+                # Start a new paragraph
+                paragraphs.append(" ".join(current_paragraph))
+                current_paragraph = [sentence]
+                current_length = sentence_length
+
+        # 3. Add the last paragraph if not empty
+        if current_paragraph:
+            paragraphs.append(" ".join(current_paragraph))
+
+        return paragraphs
 
 
     def _extract_related_text_td_idf(self, text, query, similarity_threshold=0.1):
@@ -185,19 +219,3 @@ class PagesSearchAgent:
 
     def _split_text(self, text, chunk_size):
         return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
-
-'''
-class SimilarityTransformerSingleton:
-    _instance = None
-    _model = None
-
-    def __new__(self, model_name='sentence-transformers/all-MiniLM-L6-v2', *args, **kwargs):
-        if self._instance is None:
-            self._instance = super().__new__(self, *args, **kwargs)
-            self._model = SentenceTransformer(model_name)
-        return self._instance
-
-    @property
-    def model(self):
-        return self._model
-'''

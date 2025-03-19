@@ -21,6 +21,8 @@ uvicorn = "^0.34.0"
 seleniumbase = "^4.34.7"
 sentence-transformers = "^3.4.1"
 undetected-chromedriver = "^3.5.5"
+dotenv = "^0.9.9"
+nltk = "^3.9.1"
 
 
 [build-system]

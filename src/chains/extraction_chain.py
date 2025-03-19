@@ -9,7 +9,7 @@ class ExtractionChain:
 ```json
 {{
     "source": "{source}",
-    "raw_webpage_data": "{markdown}"
+    "raw_webpage_data": "{data}"
 }}
 ```
 
