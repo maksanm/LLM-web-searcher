@@ -7,12 +7,13 @@ from langchain_core.runnables import RunnableParallel
 class AnalysisChain:
     REPHRASE_PROMPT_TEMPLATE = """Enhance the query below by inserting relevant synonyms, context details, and common web page terminology related to the original topic. Avoid repetition, preserve clarity, retain key proper names, and provide the result in {language}.
 
-Example of Input Query and Transformation:
-Input Query: new smartphone releases
-Expanded Query: latest smartphone models, upcoming phone launches, specs comparisons, mobile innovations, brand announcements
+```example
+Query: new smartphone releases
+Result: latest smartphone models, upcoming phone launches, specs comparisons, mobile innovations, brand announcements
+```
 
-Input Query: {query}
-Expanded Query: """
+Query: {query}
+Result: """
 
     def create(self):
         llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.0)

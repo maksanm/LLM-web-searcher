@@ -9,6 +9,7 @@ from sentence_transformers import SentenceTransformer, util
 from nltk.tokenize import sent_tokenize
 import nltk
 import threading
+import torch
 import undetected_chromedriver as uc
 import os
 import time
@@ -53,7 +54,6 @@ class PagesSearchAgent:
 
         print("Multiple threads took", (time.time() - start_time), "seconds")
 
-        # Filter out None entries
         source_data_dicts = [sdd for sdd in source_data_dicts if sdd is not None]
 
         # The LLM postprocessing of extracted texts is disabled to speed up completion
@@ -76,27 +76,27 @@ class PagesSearchAgent:
         options.add_argument("--disable-setuid-sandbox")
         options.add_argument("--disable-dev-shm-usage")
 
-        # Retrieve page source or other needed data
         t = time.time()
+        print("---Retrieval start---")
+
+        # Retrieve page source
         driver = uc.Chrome(options=options, user_multi_procs=True)
         #driver = Driver(uc=True, headless=True, multi_proxy=True)
         #driver = webdriver.Chrome(options=options)
-        driver.set_page_load_timeout(5)
         try:
+            driver.set_page_load_timeout(5)
             driver.get(uri)
         except TimeoutException:
-            print("TIMEOUT")
+            print("--TIMEOUT--")
         finally:
             content_html = driver.page_source
             soup = BeautifulSoup(content_html, 'html.parser')
             for tag in soup(["nav", "header", "footer", "script", "style", "aside"]):
                 tag.decompose()
             text = soup.get_text(separator=' ', strip=True)
+            driver.quit()
 
-        driver.quit()
-
-        tt = time.time()
-        print("---Retrieval finished after %s seconds ---" % (tt - t))
+        print("---Retrieval finished after %s seconds ---" % (time.time() - t))
 
         related_text = ""
         if len(text) > self.min_retrieved_text_length:
@@ -109,45 +109,35 @@ class PagesSearchAgent:
             if element["source"] == uri:
                 element["data"] = related_text
                 break
-        return {
-            "source": uri,
-            "data": related_text
-        }
 
 
-    def _extract_related_text(self, text, query, similarity_threshold=0.1):
+    def _extract_related_text(self, text, query):
         page_size_limit = int(os.getenv("RETRIEVED_PAGE_CHARACTER_LIMIT"))
-        paragraphs = self._split_into_paragraphs(text)
+        length_threshold = 400
+        paragraphs = self._split_into_paragraphs(text, length_threshold)
 
         if not paragraphs:
             return ""
 
-        # Compute embeddings for the query and for each paragraph
         t = time.time()
         print("---Transformer start---")
+
+        # Compute embeddings for the query and for each paragraph
         query_emb = self.transformer.encode(query, convert_to_tensor=True)
         paragraph_embs = self.transformer.encode(paragraphs, convert_to_tensor=True)
-        print("---Transformer finished after %s seconds ---" % (time.time() - t))
 
         # Compute cosine similarities between query and each paragraph
-        similarities = util.cos_sim(query_emb, paragraph_embs)[0]
-        print("PROCESSING PARAGRAPHS: ", (max(similarities)))
-
-        filtered_paragraphs = [
-            p for p, sim in zip(paragraphs, similarities)
-            if sim >= similarity_threshold
-        ]
+        similarity_scores = self.transformer.similarity(query_emb, paragraph_embs)[0]
+        _, indices = torch.topk(similarity_scores, k=min(page_size_limit // length_threshold, len(paragraphs)))
+        print("---Transformer finished after %s seconds ---" % (time.time() - t))
 
         related_text = ""
-        for p in filtered_paragraphs:
-            # Check if adding the next paragraph would exceed the limit
-            if len(related_text) + len(p) > page_size_limit:
-                break
-            related_text += p + "\n\n"
+        for id in indices:
+            related_text += paragraphs[id] + "\n"
         return related_text.strip()
 
 
-    def _split_into_paragraphs(self, text, length_threshold=100):
+    def _split_into_paragraphs(self, text, length_threshold=200):
         """
         Uses NLTK to split 'text' into sentences, then groups sentences
         into paragraphs whose length does not exceed 'length_threshold'.
